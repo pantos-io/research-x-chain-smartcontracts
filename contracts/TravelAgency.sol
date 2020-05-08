@@ -1,5 +1,6 @@
 pragma solidity >=0.6.0 <0.7.0;
-import "./BlockchainProxy.sol";
+
+import "./RPCProxy.sol";
 
 contract TravelAgency {
 
@@ -13,15 +14,15 @@ contract TravelAgency {
 
     address private hotelAddr;
     address private railwayCompanyAddr;
-    BlockchainProxy private blockchainA;
-    BlockchainProxy private blockchainB;
+    RPCProxy private blockchainA;
+    RPCProxy private blockchainB;
     uint private nextTripId;
     mapping(uint => Trip) public trips;
 
 
     constructor(address _blockchainA, address _blockchainB, address _hotelAddr, address _railwayCompanyAddr) public {
-        blockchainA = BlockchainProxy(_blockchainA);
-        blockchainB = BlockchainProxy(_blockchainB);
+        blockchainA = RPCProxy(_blockchainA);
+        blockchainB = RPCProxy(_blockchainB);
         hotelAddr = _hotelAddr;
         railwayCompanyAddr = _railwayCompanyAddr;
     }
