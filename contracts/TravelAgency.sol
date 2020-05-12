@@ -37,7 +37,7 @@ contract TravelAgency {
         ++nextTripId;
     }
 
-    function bookHotelCallback(uint tripId, bytes result, uint errorCode) public {
+    function bookHotelCallback(uint tripId, bytes memory result, uint errorCode) public {
         if (errorCode == 0) {
             uint hotelReservation = uint(result);
             trips[tripId].hotelReservation = hotelReservation;
@@ -51,7 +51,7 @@ contract TravelAgency {
         }
     }
 
-    function bookTrainCallback(uint tripId, bytes result, uint errorCode) public {
+    function bookTrainCallback(uint tripId, bytes memory result, uint errorCode) public {
         if (errorCode == 0) {
             trips[tripId].trainReservation = uint(result);
             // TODO: emit event BookingSuccessful(tripId);
@@ -63,7 +63,7 @@ contract TravelAgency {
         }
     }
 
-    function cancelHotelCallback(uint tripId, bytes result, uint errorCode) public {
+    function cancelHotelCallback(uint tripId, bytes memory result, uint errorCode) public {
         if (errorCode == 0) {
             delete trips[tripId];
             // TODO: emit bookingFailed(tripId);

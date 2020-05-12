@@ -12,6 +12,7 @@ contract RPCProxy {
         bytes msgData;
     }
 
+    uint8 constant public reqConfirmations = 5;
     uint private nextCallId = 1;
     mapping(uint => Call) private pendingCalls;
     mapping(address => uint) private preparedCalls;
@@ -20,6 +21,7 @@ contract RPCProxy {
 
     event CallPrepared(uint callId);
     event CallSubmitted(uint callId);
+    event FunctionCall(uint callId, address caller, address remoteRPCServer, address contractAddr, bytes msgData);
     event CallAcknowledged(uint callId, bool success);
 
     constructor(address _remoteRPCServer, address _relayAddr) public {
@@ -36,19 +38,20 @@ contract RPCProxy {
         pendingCalls[nextCallId].caller = msg.sender;
         preparedCalls[msg.sender] = nextCallId;
 
-        return this;
+//        return this;
+        // TODO
     }
 
-    function() external {
+    fallback() external {
         require(preparedCalls[msg.sender] != 0);
-        require(pendingCalls[preparedCalls[msg.sender]].msgData == 0);
+        require(pendingCalls[preparedCalls[msg.sender]].msgData.length == 0);
         pendingCalls[preparedCalls[msg.sender]].msgData = msg.data;
         emit CallPrepared(preparedCalls[msg.sender]);
         delete preparedCalls[msg.sender];
     }
 
     function submitCall(uint callId) external {
-        require(pendingCalls[callId].msgData != 0);
+        require(pendingCalls[callId].msgData.length != 0);
         emit FunctionCall(
             callId,
             pendingCalls[callId].caller,
@@ -63,12 +66,12 @@ contract RPCProxy {
         bytes calldata path, bytes calldata rlpEncodedNodes) external {
         require(block.gaslimit - gasleft() >= 1000000);  // TODO: ensure that enough gas is provided??
         uint feeInWei = 0;  // TODO
-        require(relay.verify(feeInWei, rlpHeader, reqConfirmations, rlpEncodedTx, path, rlpEncodedNodes));
-        (uint callId, address txRemoteRPCServer, bytes result, uint error) = parse(rlpEncodedTx);
+        require(relay.verifyTransaction(feeInWei, rlpHeader, reqConfirmations, rlpEncodedTx, path, rlpEncodedNodes) == 0);
+        (uint callId, address txRemoteRPCServer, bytes memory result, uint error) = parseTx(rlpEncodedTx);
         require(remoteRPCServer == txRemoteRPCServer);
-        require(pendingCalls[callId].caller != 0);  // make sure pending call is not acknowledged yet
+        require(pendingCalls[callId].caller != address(0));  // make sure pending call is not acknowledged yet
 
-        bytes memory callbackSig = append(pendingCalls[callId].callback, "(uint,bytes,uint)");
+        bytes memory callbackSig = append(bytes(pendingCalls[callId].callback), "(uint,bytes,uint)");
         bytes4 callbackId = bytes4(keccak256(callbackSig));
         (bool success,) = pendingCalls[callId].caller.call(callbackId, pendingCalls[callId].dappSpecificId, result, error);
         delete pendingCalls[callId];
@@ -90,6 +93,11 @@ contract RPCProxy {
         }
 
         return result;
+    }
+
+    function parseTx(bytes memory rlpEncodedTx) private returns (uint, address, bytes memory, uint) {
+        // TODO: implement me
+        return (0, address(0), new bytes[](0), 0);
     }
 
 }
