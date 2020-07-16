@@ -7,14 +7,14 @@ contract RPCServer {
 
     struct RelayMeta {
         address relayAddr;
-        uint requiredConfirmations;
+        uint8 requiredConfirmations;
     }
 
     mapping(address => RelayMeta) rpcProxyToRelay;
 
-    event CallExecuted(address remoteRPCProxy, uint callId, bool success, byte data);
+    event CallExecuted(address remoteRPCProxy, uint callId, bool success, bytes data);
 
-    constructor(address[] memory proxies, address[] memory relayAddresses, uint[] memory confirmations) public {
+    constructor(address[] memory proxies, address[] memory relayAddresses, uint8[] memory confirmations) public {
         require(proxies.length == relayAddresses.length, "arrays must have the same length (1)");
         require(relayAddresses.length == confirmations.length, "arrays must have the same length (2)");
         for (uint i = 0; i < proxies.length; i++) {
@@ -29,10 +29,15 @@ contract RPCServer {
         uint feeInWei = 0;  // TODO
 
         address remoteRPCProxy = parseRPCProxy(rlpEncodedTx);
-        require(rpcProxyToRelay[remoteRPCProxy].relayAddr != 0);
+        require(rpcProxyToRelay[remoteRPCProxy].relayAddr != address(0));
         Relay relay = Relay(rpcProxyToRelay[remoteRPCProxy].relayAddr);
-        uint reqConfirmations = rpcProxyToRelay[remoteRPCProxy].requiredConfirmations;
-        require(relay.verify(feeInWei, rlpHeader, reqConfirmations, rlpEncodedTx, path, rlpEncodedNodes));
+        uint8 reqConfirmations = rpcProxyToRelay[remoteRPCProxy].requiredConfirmations;
+        require(relay.verifyTransaction(feeInWei, rlpHeader, reqConfirmations, rlpEncodedTx, path, rlpEncodedNodes) == 0);
+//TODO: 
+// RPCServer.sol:35:60: CompilerError: Stack too deep, try removing local variables.
+//     uint8 verified = relay.verifyTransaction(feeInWei, rlpHeader, reqConfirmations, rlpEncodedTx, path, rlpEncodedNodes);
+//                                                        ^-------^
+        uint8 verified = relay.verifyTransaction(feeInWei, rlpHeader, reqConfirmations, rlpEncodedTx, path, rlpEncodedNodes);
 
         (address intendedRPCServer, address contractAddr, bytes memory callData, uint callId) = parseTx(rlpEncodedTx);
         require(intendedRPCServer == address(this));
@@ -42,11 +47,13 @@ contract RPCServer {
     }
 
     function parseRPCProxy(bytes memory rlpEncodedTx) private returns (address) {
-        return 0;
+//TODO
+        return address(0);
     }
 
     function parseTx(bytes memory rlpEncodedTx) private returns (address, address, bytes memory, uint) {
-        return (0, 0, 0, 0);
+//TODO
+        return (address(0), address(0), new bytes(0), 0);
     }
 
 }

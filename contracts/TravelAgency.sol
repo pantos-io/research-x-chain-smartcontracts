@@ -31,19 +31,23 @@ contract TravelAgency {
         trips[nextTripId].guest = guest;
         trips[nextTripId].from = from;
         trips[nextTripId].to = to;
-        blockchainA
-            .contractCall(hotelAddr, nextTripId, "bookHotelCallback")
-            .bookRoom(guest, from, to);
+        bytes memory callData = abi.encodeWithSignature("bookRoom(address, uint, uint)", guest, from, to);
+        blockchainA.callContract(hotelAddr, nextTripId, "bookHotelCallback", callData);
+//        blockchainA
+//            .contractCall(hotelAddr, nextTripId, "bookHotelCallback")
+//            .bookRoom(guest, from, to);
         ++nextTripId;
     }
 
-    function bookHotelCallback(uint tripId, bytes memory result, uint errorCode) public {
+    function bookHotelCallback(uint tripId, uint result, uint errorCode) public {
         if (errorCode == 0) {
             uint hotelReservation = uint(result);
             trips[tripId].hotelReservation = hotelReservation;
-            blockchainB
-                .contractCall(railwayCompanyAddr, tripId, "bookTrainCallback")
-                .bookTicket(trips[tripId].guest, trips[tripId].from, trips[tripId].to);
+            bytes memory callData = abi.encodeWithSignature("bookTicket(uint, bytes, uint)", tripId, result, errorCode);
+            blockchainB.callContract(railwayCompanyAddr, tripId, "bookTrainCallback", callData);
+//            blockchainB
+//                .contractCall(railwayCompanyAddr, tripId, "bookTrainCallback")
+//                .bookTicket(trips[tripId].guest, trips[tripId].from, trips[tripId].to);
         }
         else {
             delete trips[tripId];
@@ -51,15 +55,17 @@ contract TravelAgency {
         }
     }
 
-    function bookTrainCallback(uint tripId, bytes memory result, uint errorCode) public {
+    function bookTrainCallback(uint tripId, uint result, uint errorCode) public {
         if (errorCode == 0) {
             trips[tripId].trainReservation = uint(result);
             // TODO: emit event BookingSuccessful(tripId);
         }
         else {
-            blockchainA
-                .contractCall(hotelAddr, tripId, "cancelHotelCallback")
-                .cancelRoom(trips[tripId].hotelReservation);
+            bytes memory callData = abi.encodeWithSignature("cancelRoom(uint)", trips[tripId].hotelReservation);
+            blockchainA.callContract(hotelAddr, tripId, "cancelHotelCallback", callData);
+//            blockchainA
+//                .callContract(hotelAddr, tripId, "cancelHotelCallback")
+//                .cancelRoom(trips[tripId].hotelReservation);
         }
     }
 
