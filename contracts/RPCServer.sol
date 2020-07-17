@@ -10,6 +10,9 @@ contract RPCServer {
         uint8 requiredConfirmations;
     }
 
+    uint256 constant public MIN_CALL_GAS = 1000000;
+    uint256 constant public MIN_CALL_GAS_CHECK = 1015874;
+
     mapping(address => RelayMeta) rpcProxyToRelay;
 
     event CallExecuted(address remoteRPCProxy, uint callId, bool success, bytes data);
@@ -23,26 +26,25 @@ contract RPCServer {
         }
     }
 
-    function executeCall(bytes calldata rlpHeader, uint8 noOfConfirmations, bytes calldata rlpEncodedTx,
+    function executeCall(bytes calldata rlpHeader, bytes calldata rlpEncodedTx,
         bytes calldata path, bytes calldata rlpEncodedNodes) external {
-        require(block.gaslimit - gasleft() >= 1000000);  // ensure that enough gas is provided
-        uint feeInWei = 0;  // TODO
+        uint8 feeInWei = 0;  // TODO
 
         address remoteRPCProxy = parseRPCProxy(rlpEncodedTx);
-        require(rpcProxyToRelay[remoteRPCProxy].relayAddr != address(0));
-        Relay relay = Relay(rpcProxyToRelay[remoteRPCProxy].relayAddr);
-        uint8 reqConfirmations = rpcProxyToRelay[remoteRPCProxy].requiredConfirmations;
-        require(relay.verifyTransaction(feeInWei, rlpHeader, reqConfirmations, rlpEncodedTx, path, rlpEncodedNodes) == 0);
+        RelayMeta memory relayMeta = rpcProxyToRelay[remoteRPCProxy];
+        require(relayMeta.relayAddr != address(0));
+        require(Relay(relayMeta.relayAddr).verifyTransaction(feeInWei, rlpHeader, relayMeta.requiredConfirmations, rlpEncodedTx, path, rlpEncodedNodes) == 0);
 //TODO: 
 // RPCServer.sol:35:60: CompilerError: Stack too deep, try removing local variables.
 //     uint8 verified = relay.verifyTransaction(feeInWei, rlpHeader, reqConfirmations, rlpEncodedTx, path, rlpEncodedNodes);
 //                                                        ^-------^
-        uint8 verified = relay.verifyTransaction(feeInWei, rlpHeader, reqConfirmations, rlpEncodedTx, path, rlpEncodedNodes);
+// Creating RelayMeta instead of separate relayAddress and reqConfirmations solves this.
 
         (address intendedRPCServer, address contractAddr, bytes memory callData, uint callId) = parseTx(rlpEncodedTx);
         require(intendedRPCServer == address(this));
 
-        (bool success, bytes memory data) = contractAddr.call(callData);
+        require (gasleft() >= MIN_CALL_GAS_CHECK);
+        (bool success, bytes memory data) = contractAddr.call{gas: MIN_CALL_GAS}(callData);
         emit CallExecuted(remoteRPCProxy, callId, success, data);
     }
 
