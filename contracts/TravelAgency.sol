@@ -32,7 +32,7 @@ contract TravelAgency {
         trips[nextTripId].from = from;
         trips[nextTripId].to = to;
         bytes memory callData = abi.encodeWithSignature("bookRoom(address, uint, uint)", guest, from, to);
-        blockchainA.callContract(hotelAddr, nextTripId, "bookHotelCallback", callData);
+        blockchainA.callContract(hotelAddr, nextTripId, callData, "bookHotelCallback");
 //        blockchainA
 //            .contractCall(hotelAddr, nextTripId, "bookHotelCallback")
 //            .bookRoom(guest, from, to);
@@ -44,7 +44,7 @@ contract TravelAgency {
             uint hotelReservation = uint(result);
             trips[tripId].hotelReservation = hotelReservation;
             bytes memory callData = abi.encodeWithSignature("bookTicket(uint, bytes, uint)", tripId, result, errorCode);
-            blockchainB.callContract(railwayCompanyAddr, tripId, "bookTrainCallback", callData);
+            blockchainB.callContract(railwayCompanyAddr, tripId, callData, "bookTrainCallback");
 //            blockchainB
 //                .contractCall(railwayCompanyAddr, tripId, "bookTrainCallback")
 //                .bookTicket(trips[tripId].guest, trips[tripId].from, trips[tripId].to);
@@ -62,7 +62,7 @@ contract TravelAgency {
         }
         else {
             bytes memory callData = abi.encodeWithSignature("cancelRoom(uint)", trips[tripId].hotelReservation);
-            blockchainA.callContract(hotelAddr, tripId, "cancelHotelCallback", callData);
+            blockchainA.callContract(hotelAddr, tripId, callData, "cancelHotelCallback");
 //            blockchainA
 //                .callContract(hotelAddr, tripId, "cancelHotelCallback")
 //                .cancelRoom(trips[tripId].hotelReservation);

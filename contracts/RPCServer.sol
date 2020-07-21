@@ -2,38 +2,47 @@ pragma solidity >=0.6.0 <0.7.0;
 
 import "./Relay.sol";
 import "./RPC.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract RPCServer {
+contract RPCServer is Ownable {
 
-    struct RelayMeta {
-        address relayAddr;
+    // struct representing an RPCProxy at another blockchain
+    struct Proxy {
+        address relayAddress;
         uint8 requiredConfirmations;
     }
+    mapping(address => Proxy) proxies;
 
     uint256 constant public MIN_CALL_GAS = 1000000;
     uint256 constant public MIN_CALL_GAS_CHECK = 1015874;
 
-    mapping(address => RelayMeta) rpcProxyToRelay;
 
     event CallExecuted(address remoteRPCProxy, uint callId, bool success, bytes data);
+    event ProxyAdded(address indexed proxyAddress, address relayAddress, uint8 requiredConfirmations);
+    event ProxyRemoved(address indexed proxyAddress);
 
-    constructor(address[] memory proxies, address[] memory relayAddresses, uint8[] memory confirmations) public {
-        require(proxies.length == relayAddresses.length, "arrays must have the same length (1)");
-        require(relayAddresses.length == confirmations.length, "arrays must have the same length (2)");
-        for (uint i = 0; i < proxies.length; i++) {
-            rpcProxyToRelay[proxies[i]].relayAddr = relayAddresses[i];
-            rpcProxyToRelay[proxies[i]].requiredConfirmations = confirmations[i];
-        }
+    function addProxy(address proxyAddress, address relayAddress, uint8 requiredConfirmations) public onlyOwner {
+        require(proxyAddress != address(0), 'proxy address cannot be 0');
+        require(relayAddress != address(0), 'relay address cannot be 0');
+
+        proxies[proxyAddress].relayAddress = relayAddress;
+        proxies[proxyAddress].requiredConfirmations = requiredConfirmations;
+        emit ProxyAdded(proxyAddress, relayAddress, requiredConfirmations);
+    }
+
+    function removeProxy(address proxyAddress) public onlyOwner {
+        delete proxies[proxyAddress];
+        emit ProxyRemoved(proxyAddress);
     }
 
     function executeCall(bytes calldata rlpHeader, bytes calldata rlpEncodedTx,
         bytes calldata path, bytes calldata rlpEncodedNodes) external {
         uint8 feeInWei = 0;  // TODO
 
-        address remoteRPCProxy = parseRPCProxy(rlpEncodedTx);
-        RelayMeta memory relayMeta = rpcProxyToRelay[remoteRPCProxy];
-        require(relayMeta.relayAddr != address(0));
-        require(Relay(relayMeta.relayAddr).verifyTransaction(feeInWei, rlpHeader, relayMeta.requiredConfirmations, rlpEncodedTx, path, rlpEncodedNodes) == 0);
+        address callingProxyAddress = parseRPCProxy(rlpEncodedTx);
+        Proxy memory proxy = proxies[callingProxyAddress];
+        require(proxy.relayAddress != address(0));
+        require(Relay(proxy.relayAddress).verifyTransaction(feeInWei, rlpHeader, proxy.requiredConfirmations, rlpEncodedTx, path, rlpEncodedNodes) == 0);
 //TODO: 
 // RPCServer.sol:35:60: CompilerError: Stack too deep, try removing local variables.
 //     uint8 verified = relay.verifyTransaction(feeInWei, rlpHeader, reqConfirmations, rlpEncodedTx, path, rlpEncodedNodes);
@@ -45,7 +54,7 @@ contract RPCServer {
 
         require (gasleft() >= MIN_CALL_GAS_CHECK);
         (bool success, bytes memory data) = contractAddr.call{gas: MIN_CALL_GAS}(callData);
-        emit CallExecuted(remoteRPCProxy, callId, success, data);
+        emit CallExecuted(callingProxyAddress, callId, success, data);
     }
 
     function parseRPCProxy(bytes memory rlpEncodedTx) private returns (address) {

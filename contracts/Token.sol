@@ -10,7 +10,7 @@ contract Token {
 
     function transferToChain(address _recipient, uint256 _amount) public {
         bytes memory callData = abi.encodeWithSignature("claimTokens(address, uint256)", _recipient, _amount);
-        blockchainB.callContract(tokenOnB, transferId, "ackTransfer", callData);
+        blockchainB.callContract(tokenOnB, transferId, callData, "ackTransfer");
         transferId++;
     }
 }

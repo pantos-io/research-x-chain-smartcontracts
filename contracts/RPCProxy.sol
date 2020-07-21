@@ -1,4 +1,5 @@
 pragma solidity >=0.6.0 <0.7.0;
+pragma experimental ABIEncoderV2;
 
 import "./Relay.sol";
 
@@ -6,55 +7,52 @@ contract RPCProxy {
 
     struct Call {
         address caller;
-        address contractAddr;
+        address contractAddress;
         uint dappSpecificId;
         string callback;
-        bytes msgData;
+        bytes callData;
     }
 
     uint8 constant public reqConfirmations = 5;
     uint256 constant public MIN_CALL_GAS = 1000000;
     uint256 constant public MIN_CALL_GAS_CHECK = 1015874;
-    //TODO make sure these numbers are solid
+    // TODO: make sure these numbers are solid
 
-    uint256 private nextCallId = 1;
+    uint256 public nextCallId = 1;
     mapping(uint => Call) private pendingCalls;
-    mapping(address => uint) private preparedCalls;
     address private remoteRPCServer;
     Relay relay;
 
-    event CallPrepared(uint callId);
-    event CallSubmitted(uint callId);
-    event CallRequested(uint callId, address caller, address remoteRPCServer, address contractAddr, bytes msgData);
-    event CallAcknowledged(uint callId, bool success);
+    event CallPrepared(uint indexed callId);
+    event CallRequested(uint indexed callId, address caller, address remoteRPCServer, address remoteContract, bytes callData);
+    event CallAcknowledged(uint indexed callId, bool success);
 
     constructor(address _remoteRPCServer, address _relayAddr) public {
         remoteRPCServer = _remoteRPCServer;
         relay = Relay(_relayAddr);
     }
 
-    function callContract(address contractAddr, uint dappSpecificId, string memory callback, bytes memory msgData) public {
-        require(preparedCalls[msg.sender] == 0);
-
-        pendingCalls[nextCallId].contractAddr = contractAddr;
+    function callContract(address contractAddress, uint dappSpecificId, bytes memory callData, string memory callback) public {
+        pendingCalls[nextCallId].contractAddress = contractAddress;
         pendingCalls[nextCallId].dappSpecificId = dappSpecificId;
         pendingCalls[nextCallId].callback = callback;
         pendingCalls[nextCallId].caller = msg.sender;
-        pendingCalls[nextCallId].msgData = msg.data;
+        pendingCalls[nextCallId].callData = callData;
         emit CallPrepared(nextCallId);
         nextCallId++;
     }
 
     function requestCall(uint callId) external {
-        require(pendingCalls[callId].msgData.length != 0);
+        require(pendingCalls[callId].callData.length != 0, 'non-existent call');
         emit CallRequested(
             callId,
             pendingCalls[callId].caller,
             remoteRPCServer,
-            pendingCalls[callId].contractAddr,
-            pendingCalls[callId].msgData
+            pendingCalls[callId].contractAddress,
+            pendingCalls[callId].callData
         );
-        delete pendingCalls[callId].msgData;
+        // remove callData to prevent the call from being requested multiple times
+        delete pendingCalls[callId].callData;
     }
 
     function acknowledgeCall(bytes calldata rlpHeader, bytes calldata rlpEncodedTx,
@@ -78,6 +76,10 @@ contract RPCProxy {
         delete pendingCalls[callId];
 
         emit CallAcknowledged(callId, success);
+    }
+
+    function getPendingCall(uint callId) public view returns (Call memory) {
+        return pendingCalls[callId];
     }
 
     function parseTx(bytes memory rlpEncodedTx) private returns (uint, address, bytes memory, uint) {
