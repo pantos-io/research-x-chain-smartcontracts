@@ -1,0 +1,30 @@
+{
+  "name": "x-chain-smartcontracts",
+  "version": "0.0.1",
+  "description": "Proof of concept demonstrating cross-blockchain smart contract invocations for Ethereum",
+  "main": "",
+  "directories": {
+    "test": "test"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^3.1.0",
+    "@openzeppelin/test-helpers": "^0.5.6",
+    "ethereumjs-tx": "^2.1.2",
+    "merkle-patricia-tree": "^4.0.0",
+    "rlp": "^2.2.6"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pf92/x-chain-smartcontracts.git"
+  },
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/pf92/x-chain-smartcontracts/issues"
+  },
+  "homepage": "https://github.com/pf92/x-chain-smartcontracts#readme"
+}

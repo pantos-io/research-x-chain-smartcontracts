@@ -13,7 +13,7 @@ contract('RPCProxy', async (accounts) => {
 
     before(async () => {
         mockRelay = await MockRelay.new({
-            fron: accounts[0],
+            from: accounts[0],
         });
     });
 
