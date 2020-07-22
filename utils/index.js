@@ -59,7 +59,9 @@ const createRLPTransaction = (tx) => {
 
 const createRLPReceipt = (receipt) => {
     return RLP.encode([
-        receipt.status ? 1 : 0,  // convert boolean to binary
+        // convert boolean to binary:
+        // workaround until this pull request is merged: https://github.com/ethereumjs/rlp/pull/32
+        receipt.status ? 1 : Buffer.from([0]),
         receipt.cumulativeGasUsed,
         receipt.logsBloom,
         convertLogs(receipt.logs)

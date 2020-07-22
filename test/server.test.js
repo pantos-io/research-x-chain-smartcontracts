@@ -17,6 +17,8 @@ const MockContract = artifacts.require('./MockContract');
 contract('RPCServer', async (accounts) => {
 
     let rpcProxy;
+    let illegalRpcProxy;
+    let otherRpcProxy;  // rpc proxy communicating with another rpc server
     let rpcServer;
     let mockRelay;
     let remoteContract;
@@ -37,13 +39,62 @@ contract('RPCServer', async (accounts) => {
         rpcProxy = await RPCProxy.new(rpcServer.address, mockRelay.address, {
             from: accounts[0],
         });
+        illegalRpcProxy = await RPCProxy.new(rpcServer.address, mockRelay.address, {
+            from: accounts[0],
+        });
+        otherRpcProxy = await RPCProxy.new(accounts[1], mockRelay.address, {
+            from: accounts[0],
+        });
         await rpcServer.addProxy(rpcProxy.address, mockRelay.address, 0);
     });
 
 
     describe('Function: executeCall', function () {
 
-        it.only("should throw error 'illegal proxy address' when trying to execute a call from an illegal proxy", async () => {
+        it("should throw error 'illegal proxy address' when trying to execute a call from an illegal proxy", async () => {
+            const contractAddr = remoteContract.address;
+            const dappSpecificId = '1';
+            const callData = web3.eth.abi.encodeFunctionCall({
+                name: 'remoteMethod',
+                type: 'function',
+                inputs: [{
+                    type: 'uint256',
+                    name: '_myNumber'
+                },{
+                    type: 'string',
+                    name: '_myString'
+                }]
+            }, ['2345675643', 'Hello!%']);
+            const callback = 'callbackFunction';
+
+            // prepare and request remote call
+            const expectedCallId = await rpcProxy.nextCallId();
+            await illegalRpcProxy.callContract(contractAddr, dappSpecificId, callData, callback);
+            const requestResult = await illegalRpcProxy.requestCall(expectedCallId);
+
+            // execute remote call
+            const block             = await web3.eth.getBlock(requestResult.receipt.blockHash);
+            const tx                = await web3.eth.getTransaction(requestResult.tx);
+            const txReceipt         = await web3.eth.getTransactionReceipt(requestResult.tx);
+            const rlpHeader         = createRLPHeader(block);
+            const rlpEncodedTx      = createRLPTransaction(tx);
+            const rlpEncodedReceipt = createRLPReceipt(txReceipt);
+
+            const path = RLP.encode(tx.transactionIndex);
+            const rlpEncodedTxNodes = await createTxMerkleProof(block, tx.transactionIndex);
+            const rlpEncodedReceiptNodes = await createReceiptMerkleProof(block, tx.transactionIndex);
+            const callExecutionData = {
+                rlpHeader,
+                rlpEncodedTx,
+                rlpEncodedReceipt,
+                path,
+                rlpEncodedTxNodes,
+                rlpEncodedReceiptNodes
+            };
+            await expectRevert(rpcServer.executeCall(callExecutionData), "illegal proxy address");
+        });
+
+        it("should throw error 'non-existent call request' when trying to execute a non-existent call request (transaction does not exist)", async () => {
             const contractAddr = remoteContract.address;
             const dappSpecificId = '1';
             const callData = web3.eth.abi.encodeFunctionCall({
@@ -64,6 +115,9 @@ contract('RPCServer', async (accounts) => {
             await rpcProxy.callContract(contractAddr, dappSpecificId, callData, callback);
             const requestResult = await rpcProxy.requestCall(expectedCallId);
 
+            // mock verification result
+            await mockRelay.setTxVerificationResult(1);
+
             // execute remote call
             const block             = await web3.eth.getBlock(requestResult.receipt.blockHash);
             const tx                = await web3.eth.getTransaction(requestResult.tx);
@@ -75,10 +129,18 @@ contract('RPCServer', async (accounts) => {
             const path = RLP.encode(tx.transactionIndex);
             const rlpEncodedTxNodes = await createTxMerkleProof(block, tx.transactionIndex);
             const rlpEncodedReceiptNodes = await createReceiptMerkleProof(block, tx.transactionIndex);
-            await expectRevert(rpcServer.executeCall(rlpHeader, rlpEncodedTx, rlpEncodedReceipt, path, rlpEncodedTxNodes, rlpEncodedReceiptNodes), "illegal proxy address");
+            const callExecutionData = {
+                rlpHeader,
+                rlpEncodedTx,
+                rlpEncodedReceipt,
+                path,
+                rlpEncodedTxNodes,
+                rlpEncodedReceiptNodes
+            };
+            await expectRevert(rpcServer.executeCall(callExecutionData), "non-existent call request");
         });
 
-        it("should prepare a remote function call correctly", async () => {
+        it("should throw error 'non-existent call request' when trying to execute a non-existent call request (receipt does not exist)", async () => {
             const contractAddr = remoteContract.address;
             const dappSpecificId = '1';
             const callData = web3.eth.abi.encodeFunctionCall({
@@ -94,92 +156,80 @@ contract('RPCServer', async (accounts) => {
             }, ['2345675643', 'Hello!%']);
             const callback = 'callbackFunction';
 
+            // prepare and request remote call
             const expectedCallId = await rpcProxy.nextCallId();
-            const ret = await rpcProxy.callContract(contractAddr, dappSpecificId, callData, callback);
+            await rpcProxy.callContract(contractAddr, dappSpecificId, callData, callback);
+            const requestResult = await rpcProxy.requestCall(expectedCallId);
 
-            // check emitted event
-            expectEvent.inLogs(ret.logs, 'CallPrepared', { callId: expectedCallId });
+            // mock verification result
+            await mockRelay.setReceiptVerificationResult(1);
 
-            // check stored call data
-            const storedCall = await rpcProxy.getPendingCall(expectedCallId);
-            expect(storedCall.caller).to.equal(accounts[0]);
-            expect(storedCall.contractAddress).to.equal(remoteContract.address);
-            expect(storedCall.dappSpecificId).to.equal(dappSpecificId);
-            expect(storedCall.callback).to.equal(callback);
-            expect(storedCall.callData).to.equal(callData);
+            // execute remote call
+            const block             = await web3.eth.getBlock(requestResult.receipt.blockHash);
+            const tx                = await web3.eth.getTransaction(requestResult.tx);
+            const txReceipt         = await web3.eth.getTransactionReceipt(requestResult.tx);
+            const rlpHeader         = createRLPHeader(block);
+            const rlpEncodedTx      = createRLPTransaction(tx);
+            const rlpEncodedReceipt = createRLPReceipt(txReceipt);
 
-            // check next call id
-            const expectedNextCallId = expectedCallId.add(web3.utils.toBN(1));
-            const actualNextCallId = await rpcProxy.nextCallId();
-            expect(actualNextCallId).to.be.bignumber.equal(expectedNextCallId);
+            const path = RLP.encode(tx.transactionIndex);
+            const rlpEncodedTxNodes = await createTxMerkleProof(block, tx.transactionIndex);
+            const rlpEncodedReceiptNodes = await createReceiptMerkleProof(block, tx.transactionIndex);
+            const callExecutionData = {
+                rlpHeader,
+                rlpEncodedTx,
+                rlpEncodedReceipt,
+                path,
+                rlpEncodedTxNodes,
+                rlpEncodedReceiptNodes
+            };
+            await expectRevert(rpcServer.executeCall(callExecutionData), "non-existent call request");
         });
 
-    });
-
-    describe('Function: requestCall', function () {
-
-        it("should throw error 'non-existent call' when requesting call for non-existent call data", async () => {
-            const nonExistentCallId = '1';
-            await expectRevert(rpcProxy.requestCall(nonExistentCallId), "non-existent call");
-        });
-
-        it("request a remote call correctly", async () => {
-            const contractAddr = accounts[0];
+        it.only("should throw error 'failed call request' when executing a call request that failed on the proxy", async () => {
+            const contractAddr = remoteContract.address;
             const dappSpecificId = '1';
             const callData = web3.eth.abi.encodeFunctionCall({
-                name: 'myMethod',
+                name: 'remoteMethod',
                 type: 'function',
                 inputs: [{
                     type: 'uint256',
-                    name: 'myNumber'
+                    name: '_myNumber'
                 },{
                     type: 'string',
-                    name: 'myString'
+                    name: '_myString'
                 }]
             }, ['2345675643', 'Hello!%']);
             const callback = 'callbackFunction';
 
-            // prepare call
+            // prepare and request remote call
             const expectedCallId = await rpcProxy.nextCallId();
             await rpcProxy.callContract(contractAddr, dappSpecificId, callData, callback);
+            const requestResult = await rpcProxy.requestCall(expectedCallId);  // this fails
 
-            // request call
-            const ret = await rpcProxy.requestCall(expectedCallId);
-            expectEvent.inLogs(ret.logs, 'CallRequested', {
-                callId: expectedCallId,
-                caller: accounts[0],
-                remoteRPCServer: rpcServer.address,
-                remoteContract: contractAddr,
-                callData: callData
-            });
+            // execute remote call
+            const block             = await web3.eth.getBlock(requestResult.receipt.blockHash);
+            const tx                = await web3.eth.getTransaction(requestResult.tx);
+            const txReceipt         = await web3.eth.getTransactionReceipt(requestResult.tx);
+            txReceipt.status        = false;    // set status to false to indicate a "failed" transaction
+            const rlpHeader         = createRLPHeader(block);
+            const rlpEncodedTx      = createRLPTransaction(tx);
+            const rlpEncodedReceipt = createRLPReceipt(txReceipt);
+
+            const path = RLP.encode(tx.transactionIndex);
+            const rlpEncodedTxNodes = await createTxMerkleProof(block, tx.transactionIndex);
+            const rlpEncodedReceiptNodes = await createReceiptMerkleProof(block, tx.transactionIndex);
+            const callExecutionData = {
+                rlpHeader,
+                rlpEncodedTx,
+                rlpEncodedReceipt,
+                path,
+                rlpEncodedTxNodes,
+                rlpEncodedReceiptNodes
+            };
+            await expectRevert(rpcServer.executeCall(callExecutionData), "failed call request");
         });
 
-        it("should throw error 'non-existent call' when a call is requested multiple times", async () => {
-            const contractAddr = accounts[0];
-            const dappSpecificId = '1';
-            const callData = web3.eth.abi.encodeFunctionCall({
-                name: 'myMethod',
-                type: 'function',
-                inputs: [{
-                    type: 'uint256',
-                    name: 'myNumber'
-                },{
-                    type: 'string',
-                    name: 'myString'
-                }]
-            }, ['2345675643', 'Hello!%']);
-            const callback = 'callbackFunction';
-
-            // prepare call
-            const expectedCallId = await rpcProxy.nextCallId();
-            await rpcProxy.callContract(contractAddr, dappSpecificId, callData, callback);
-
-            // request call for the first time (should succeed)
-            await rpcProxy.requestCall(expectedCallId);
-
-            // request call for the second time (should fail)
-            await expectRevert(rpcProxy.requestCall(expectedCallId), "non-existent call");
-        });
     });
 
     const createTxMerkleProof = async (block, transactionIndex) => {

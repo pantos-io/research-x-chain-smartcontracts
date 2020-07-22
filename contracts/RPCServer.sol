@@ -1,10 +1,16 @@
 pragma solidity >=0.6.0 <0.7.0;
+pragma experimental ABIEncoderV2;
 
 import "./Relay.sol";
 import "./RPC.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "./RLPReader.sol";
+
 
 contract RPCServer is Ownable {
+
+    using RLPReader for RLPReader.RLPItem;
+    using RLPReader for bytes;
 
     // struct representing an RPCProxy at another blockchain
     struct Proxy {
@@ -12,6 +18,20 @@ contract RPCServer is Ownable {
         uint8 requiredConfirmations;
     }
     mapping(address => Proxy) proxies;
+
+    struct CallExecution {
+        bytes rlpHeader;
+        bytes rlpEncodedTx;
+        bytes rlpEncodedReceipt;
+        bytes path;
+        bytes rlpEncodedTxNodes;
+        bytes rlpEncodedReceiptNodes;
+    }
+
+    struct Call {
+        address rpcProxy;
+        bool status;
+    }
 
     uint256 constant public MIN_CALL_GAS = 1000000;
     uint256 constant public MIN_CALL_GAS_CHECK = 1015874;
@@ -35,36 +55,59 @@ contract RPCServer is Ownable {
         emit ProxyRemoved(proxyAddress);
     }
 
-    function executeCall(bytes calldata rlpHeader, bytes calldata rlpEncodedTx,
-        bytes calldata path, bytes calldata rlpEncodedNodes) external {
-        uint8 feeInWei = 0;  // TODO
+    function executeCall(CallExecution calldata callExecution) external {
+//    function executeCall(bytes calldata rlpHeader, bytes calldata rlpEncodedTx, bytes calldata rlpEncodedReceipt,
+//        bytes calldata path, bytes calldata rlpEncodedTxNodes, bytes calldata rlpEncodedReceiptNodes) external {
+        uint8 feeInWei = 0;
 
-        address callingProxyAddress = parseRPCProxy(rlpEncodedTx);
-        Proxy memory proxy = proxies[callingProxyAddress];
-        require(proxy.relayAddress != address(0));
-        require(Relay(proxy.relayAddress).verifyTransaction(feeInWei, rlpHeader, proxy.requiredConfirmations, rlpEncodedTx, path, rlpEncodedNodes) == 0);
-//TODO: 
+        Call memory call = extractCall(callExecution.rlpEncodedTx, callExecution.rlpEncodedReceipt);
+        Proxy memory proxy = proxies[call.rpcProxy];
+        require(proxy.relayAddress != address(0), 'illegal proxy address');
+        require(call.status == true, 'failed call request');
+
+        uint8 verificationResult = Relay(proxy.relayAddress).verifyTransaction(
+            feeInWei,
+            callExecution.rlpHeader,
+            proxy.requiredConfirmations,
+            callExecution.rlpEncodedTx,
+            callExecution.path,
+            callExecution.rlpEncodedTxNodes
+        );
+        require(verificationResult == 0, 'non-existent call request');
+        verificationResult = Relay(proxy.relayAddress).verifyReceipt(
+            feeInWei,
+            callExecution.rlpHeader,
+            proxy.requiredConfirmations,
+            callExecution.rlpEncodedReceipt,
+            callExecution.path,
+            callExecution.rlpEncodedReceiptNodes
+        );
+        require(verificationResult == 0, 'non-existent call request');
+//TODO:
 // RPCServer.sol:35:60: CompilerError: Stack too deep, try removing local variables.
 //     uint8 verified = relay.verifyTransaction(feeInWei, rlpHeader, reqConfirmations, rlpEncodedTx, path, rlpEncodedNodes);
 //                                                        ^-------^
 // Creating RelayMeta instead of separate relayAddress and reqConfirmations solves this.
 
-        (address intendedRPCServer, address contractAddr, bytes memory callData, uint callId) = parseTx(rlpEncodedTx);
-        require(intendedRPCServer == address(this));
+//        (address intendedRPCServer, address contractAddr, bytes memory callData, uint callId) = extractCall(rlpEncodedTx);
+//        require(intendedRPCServer == address(this));
 
-        require (gasleft() >= MIN_CALL_GAS_CHECK);
-        (bool success, bytes memory data) = contractAddr.call{gas: MIN_CALL_GAS}(callData);
-        emit CallExecuted(callingProxyAddress, callId, success, data);
+//        require (gasleft() >= MIN_CALL_GAS_CHECK);
+//        (bool success, bytes memory data) = contractAddr.call{gas: MIN_CALL_GAS}(callData);
+//        emit CallExecuted(call.rpcProxy, callId, success, data);
     }
 
-    function parseRPCProxy(bytes memory rlpEncodedTx) private returns (address) {
-//TODO
-        return address(0);
-    }
+    function extractCall(bytes memory rlpTransaction, bytes memory rlpReceipt) private returns (Call memory) {
+        Call memory call;
 
-    function parseTx(bytes memory rlpEncodedTx) private returns (address, address, bytes memory, uint) {
-//TODO
-        return (address(0), address(0), new bytes(0), 0);
+        // parse transaction
+        RLPReader.RLPItem[] memory transaction = rlpTransaction.toRlpItem().toList();
+        call.rpcProxy = transaction[3].toAddress();
+
+        // parse receipt
+        RLPReader.RLPItem[] memory receipt = rlpReceipt.toRlpItem().toList();
+        call.status = receipt[0].toBoolean();
+        return call;
     }
 
 }
