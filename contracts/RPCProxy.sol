@@ -24,7 +24,7 @@ contract RPCProxy {
     Relay relay;
 
     event CallPrepared(uint indexed callId);
-    event CallRequested(uint indexed callId, address caller, address remoteRPCServer, address remoteContract, bytes callData);
+    event CallRequested(uint indexed callId, address indexed caller, address indexed remoteContract, bytes callData);
     event CallAcknowledged(uint indexed callId, bool success);
 
     constructor(address _remoteRPCServer, address _relayAddr) public {
@@ -47,7 +47,6 @@ contract RPCProxy {
         emit CallRequested(
             callId,
             pendingCalls[callId].caller,
-            remoteRPCServer,
             pendingCalls[callId].contractAddress,
             pendingCalls[callId].callData
         );

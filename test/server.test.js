@@ -186,7 +186,7 @@ contract('RPCServer', async (accounts) => {
             await expectRevert(rpcServer.executeCall(callExecutionData), "non-existent call request");
         });
 
-        it.only("should throw error 'failed call request' when executing a call request that failed on the proxy", async () => {
+        it("should throw error 'failed call request' when executing a call request that failed on the proxy", async () => {
             const contractAddr = remoteContract.address;
             const dappSpecificId = '1';
             const callData = web3.eth.abi.encodeFunctionCall({
@@ -205,7 +205,7 @@ contract('RPCServer', async (accounts) => {
             // prepare and request remote call
             const expectedCallId = await rpcProxy.nextCallId();
             await rpcProxy.callContract(contractAddr, dappSpecificId, callData, callback);
-            const requestResult = await rpcProxy.requestCall(expectedCallId);  // this fails
+            const requestResult = await rpcProxy.requestCall(expectedCallId);
 
             // execute remote call
             const block             = await web3.eth.getBlock(requestResult.receipt.blockHash);
@@ -228,6 +228,71 @@ contract('RPCServer', async (accounts) => {
                 rlpEncodedReceiptNodes
             };
             await expectRevert(rpcServer.executeCall(callExecutionData), "failed call request");
+        });
+
+        it.only("should execute remote call correctly", async () => {
+            const contractAddr = remoteContract.address;
+            const dappSpecificId = 1;
+            const expectedNumber = '2345675643';
+            const expectedString = 'Hello!%';
+            const callData = web3.eth.abi.encodeFunctionCall({
+                name: 'remoteMethod',
+                type: 'function',
+                inputs: [{
+                    type: 'uint256',
+                    name: '_myNumber'
+                },{
+                    type: 'string',
+                    name: '_myString'
+                }]
+            }, [expectedNumber, expectedString]);
+            // const callData = web3.eth.abi.encodeFunctionCall({
+            //     inputs: [],
+            //     name: "remoteMethod2",
+            //     outputs: [],
+            //     stateMutability: "nonpayable",
+            //     type: "function"
+            // }, []);
+            const callback = 'callbackFunction';
+
+            await remoteContract.remoteMethod(expectedNumber, expectedString);
+            console.log(await remoteContract.callData());
+            console.log(callData);
+
+            // prepare and request remote call
+            const expectedCallId = await rpcProxy.nextCallId();
+            await rpcProxy.callContract(contractAddr, dappSpecificId, callData, callback);
+            const requestResult = await rpcProxy.requestCall(expectedCallId);
+
+            // execute remote call
+            const block             = await web3.eth.getBlock(requestResult.receipt.blockHash);
+            const tx                = await web3.eth.getTransaction(requestResult.tx);
+            const txReceipt         = await web3.eth.getTransactionReceipt(requestResult.tx);
+            const rlpHeader         = createRLPHeader(block);
+            const rlpEncodedTx      = createRLPTransaction(tx);
+            const rlpEncodedReceipt = createRLPReceipt(txReceipt);
+
+            const path = RLP.encode(tx.transactionIndex);
+            const rlpEncodedTxNodes = await createTxMerkleProof(block, tx.transactionIndex);
+            const rlpEncodedReceiptNodes = await createReceiptMerkleProof(block, tx.transactionIndex);
+            const callExecutionData = {
+                rlpHeader,
+                rlpEncodedTx,
+                rlpEncodedReceipt,
+                path,
+                rlpEncodedTxNodes,
+                rlpEncodedReceiptNodes
+            };
+            const executionResult = await rpcServer.executeCall(callExecutionData);
+            // uint callId, address remoteRPCProxy, bool success, bytes data
+            // expect(await remoteContract.myNumber()).to.be.bignumber.equal(expectedNumber);
+            expectEvent.inLogs(executionResult.logs, 'CallExecuted',
+                { callId: expectedCallId,
+                           remoteRPCProxy: rpcProxy.address,
+                           success: true/*,
+                           data: []*/
+                         }
+            );
         });
 
     });
