@@ -327,6 +327,65 @@ contract('RPCServer', async (accounts) => {
             );
         });
 
+        it.only("should throw error 'not enough gas' when executing remote call without enough gas", async () => {
+            const contractAddr = remoteContract.address;
+            const dappSpecificId = 1;
+            const expectedNumber = '2345675643';
+            const expectedString = 'Hello!%';
+            const callData = web3.eth.abi.encodeFunctionCall({
+                name: 'remoteMethod',
+                type: 'function',
+                inputs: [{
+                    type: 'uint256',
+                    name: '_myNumber'
+                },{
+                    type: 'string',
+                    name: '_myString'
+                }]
+            }, [expectedNumber, expectedString]);
+            const callback = 'callbackFunction';
+
+            // prepare and request remote call
+            const expectedCallId = await rpcProxy.nextCallId();
+            await rpcProxy.callContract(contractAddr, dappSpecificId, callData, callback);
+            const requestResult = await rpcProxy.requestCall(expectedCallId);
+
+            // execute remote call
+            const block             = await web3.eth.getBlock(requestResult.receipt.blockHash);
+            const tx                = await web3.eth.getTransaction(requestResult.tx);
+            const txReceipt         = await web3.eth.getTransactionReceipt(requestResult.tx);
+            const rlpHeader         = createRLPHeader(block);
+            const rlpEncodedTx      = createRLPTransaction(tx);
+            const rlpEncodedReceipt = createRLPReceipt(txReceipt);
+
+            const path = RLP.encode(tx.transactionIndex);
+            const rlpEncodedTxNodes = await createTxMerkleProof(block, tx.transactionIndex);
+            const rlpEncodedReceiptNodes = await createReceiptMerkleProof(block, tx.transactionIndex);
+            const callExecutionData = {
+                rlpHeader,
+                rlpEncodedTx,
+                rlpEncodedReceipt,
+                path,
+                rlpEncodedTxNodes,
+                rlpEncodedReceiptNodes
+            };
+            await expectRevert(rpcServer.executeCall(callExecutionData, {
+                gas: 1000000
+            }), "not enough gas");
+
+            const executionResult = await rpcServer.executeCall(callExecutionData, {
+                gas: 1500000
+            });
+            expectEvent.inLogs(executionResult.logs, 'CallExecuted',
+                { callId: expectedCallId,
+                    remoteRPCProxy: rpcProxy.address,
+                    success: true,
+                    data: null
+                }
+            );
+
+        });
+
     });
 
     const createTxMerkleProof = async (block, transactionIndex) => {

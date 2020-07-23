@@ -88,7 +88,7 @@ contract RPCServer is Ownable {
         );
         require(verificationResult == 0, 'non-existent call request');
 
-//        require (gasleft() >= MIN_CALL_GAS_CHECK);
+        require (gasleft() >= MIN_CALL_GAS_CHECK, 'not enough gas');
         emit CallEvent(call.contractAddress, call.callData);
         (bool success, bytes memory data) = call.contractAddress.call{gas: MIN_CALL_GAS}(call.callData);
         emit CallExecuted(call.callId, call.rpcProxy, success, data);
