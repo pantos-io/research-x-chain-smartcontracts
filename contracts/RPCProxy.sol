@@ -81,7 +81,27 @@ contract RPCProxy {
         Result memory result = extractResult(callAck.rlpEncodedTx, callAck.rlpEncodedReceipt);
         require(result.rpcServer == rpcServer, 'illegal rpc server');
 
-        //        uint8 feeInWei = 0; //TODO
+        uint8 feeInWei = 0; // todo: pass in constructor? Should ideally be dynamic
+        uint8 requiredConfirmations = 0; // todo: should be passed in constructor --> potentially different for each relay
+        uint8 verificationResult = relay.verifyTransaction(
+            feeInWei,
+            callAck.rlpHeader,
+            requiredConfirmations,
+            callAck.rlpEncodedTx,
+            callAck.path,
+            callAck.rlpEncodedTxNodes
+        );
+        require(verificationResult == 0, 'non-existent call execution');
+        verificationResult = relay.verifyReceipt(
+            feeInWei,
+            callAck.rlpHeader,
+            requiredConfirmations,
+            callAck.rlpEncodedReceipt,
+            callAck.path,
+            callAck.rlpEncodedReceiptNodes
+        );
+        require(verificationResult == 0, 'non-existent call execution');
+
 //        require(relay.verifyTransaction(feeInWei, rlpHeader, reqConfirmations, rlpEncodedTx, path, rlpEncodedNodes) == 0);
 //        (uint callId, address txRemoteRPCServer, bytes memory result, uint error) = parseTx(rlpEncodedTx);
 //        require(remoteRPCServer == txRemoteRPCServer);

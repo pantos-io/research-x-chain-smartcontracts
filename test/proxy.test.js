@@ -151,7 +151,43 @@ contract('RPCProxy', async (accounts) => {
 
     describe('Function: acknowledgeCall', function () {
 
-        it.only("should throw error 'illegal rpc server' when acknowledging call from illegal rpc server", async () => {
+        it("should throw error 'illegal rpc server' when acknowledging call from illegal rpc server", async () => {
+            const contractAddr = remoteContract.address;
+            const dappSpecificId = '1';
+            const callData = web3.eth.abi.encodeFunctionCall({
+                name: 'myMethod',
+                type: 'function',
+                inputs: [{
+                    type: 'uint256',
+                    name: 'myNumber'
+                },{
+                    type: 'string',
+                    name: 'myString'
+                }]
+            }, ['2345675643', 'Hello!%']);
+            const callback = 'callbackFunction';
+
+            // prepare call on illegal proxy
+            const callId = await illegalRpcProxy.nextCallId();
+            await illegalRpcProxy.callContract(contractAddr, dappSpecificId, callData, callback);
+
+            // request call on illegal proxy
+            const requestResult = await illegalRpcProxy.requestCall(callId);
+
+            // execute call on illegal server
+            const callExecutionData = await createProofData(requestResult);
+            const executionResult = await illegalRpcServer.executeCall(callExecutionData, {
+                gas: 1500000
+            });
+
+            // acknowledge call on legal proxy
+            const callAcknowledgeData = await createProofData(executionResult);
+            await expectRevert(rpcProxy.acknowledgeCall(callAcknowledgeData, {
+                gas: 1500000
+            }), 'illegal rpc server');
+        });
+
+        it.only("should throw error 'non-existent call execution' when acknowledging call that was never executed", async () => {
             const contractAddr = remoteContract.address;
             const dappSpecificId = '1';
             const callData = web3.eth.abi.encodeFunctionCall({
@@ -169,22 +205,30 @@ contract('RPCProxy', async (accounts) => {
 
             // prepare call on illegal proxy
             const callId = await rpcProxy.nextCallId();
-            await illegalRpcProxy.callContract(contractAddr, dappSpecificId, callData, callback);
+            await rpcProxy.callContract(contractAddr, dappSpecificId, callData, callback);
 
             // request call on illegal proxy
-            const requestResult = await illegalRpcProxy.requestCall(callId);
+            const requestResult = await rpcProxy.requestCall(callId);
 
             // execute call on illegal server
             const callExecutionData = await createProofData(requestResult);
-            const executionResult = await illegalRpcServer.executeCall(callExecutionData, {
+            const executionResult = await rpcServer.executeCall(callExecutionData, {
                 gas: 1500000
             });
 
             // acknowledge call on legal proxy
-            const callAcknowledgeData = await createProofData(executionResult);
+            await mockRelay.setTxVerificationResult(1);
+            let callAcknowledgeData = await createProofData(executionResult);
             await expectRevert(rpcProxy.acknowledgeCall(callAcknowledgeData, {
                 gas: 1500000
-            }), 'illegal rpc server');
+            }), 'non-existent call execution');
+
+            await mockRelay.setTxVerificationResult(0);
+            await mockRelay.setReceiptVerificationResult(1);
+            callAcknowledgeData = await createProofData(executionResult);
+            await expectRevert(rpcProxy.acknowledgeCall(callAcknowledgeData, {
+                gas: 1500000
+            }), 'non-existent call execution');
         });
     });
 
