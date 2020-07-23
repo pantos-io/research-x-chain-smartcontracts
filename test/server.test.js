@@ -1,13 +1,5 @@
-const {
-    createRLPHeader,
-    createRLPReceipt,
-    createRLPTransaction,
-} = require("../utils");
-const { BaseTrie: Trie } = require('merkle-patricia-tree');
-const RLP = require('rlp');
-
+const {createProofData} = require('../utils');
 const {expectRevert, expectEvent} = require('@openzeppelin/test-helpers');
-const {expect} = require('chai');
 
 const RPCProxy = artifacts.require('./RPCProxy');
 const RPCServer = artifacts.require('./RPCServer');
@@ -70,24 +62,7 @@ contract('RPCServer', async (accounts) => {
             const requestResult = await illegalRpcProxy.requestCall(expectedCallId);
 
             // execute remote call
-            const block             = await web3.eth.getBlock(requestResult.receipt.blockHash);
-            const tx                = await web3.eth.getTransaction(requestResult.tx);
-            const txReceipt         = await web3.eth.getTransactionReceipt(requestResult.tx);
-            const rlpHeader         = createRLPHeader(block);
-            const rlpEncodedTx      = createRLPTransaction(tx);
-            const rlpEncodedReceipt = createRLPReceipt(txReceipt);
-
-            const path = RLP.encode(tx.transactionIndex);
-            const rlpEncodedTxNodes = await createTxMerkleProof(block, tx.transactionIndex);
-            const rlpEncodedReceiptNodes = await createReceiptMerkleProof(block, tx.transactionIndex);
-            const callExecutionData = {
-                rlpHeader,
-                rlpEncodedTx,
-                rlpEncodedReceipt,
-                path,
-                rlpEncodedTxNodes,
-                rlpEncodedReceiptNodes
-            };
+            const callExecutionData = await createProofData(web3, requestResult);
             await expectRevert(rpcServer.executeCall(callExecutionData), "illegal proxy address");
         });
 
@@ -116,24 +91,7 @@ contract('RPCServer', async (accounts) => {
             await mockRelay.setTxVerificationResult(1);
 
             // execute remote call
-            const block             = await web3.eth.getBlock(requestResult.receipt.blockHash);
-            const tx                = await web3.eth.getTransaction(requestResult.tx);
-            const txReceipt         = await web3.eth.getTransactionReceipt(requestResult.tx);
-            const rlpHeader         = createRLPHeader(block);
-            const rlpEncodedTx      = createRLPTransaction(tx);
-            const rlpEncodedReceipt = createRLPReceipt(txReceipt);
-
-            const path = RLP.encode(tx.transactionIndex);
-            const rlpEncodedTxNodes = await createTxMerkleProof(block, tx.transactionIndex);
-            const rlpEncodedReceiptNodes = await createReceiptMerkleProof(block, tx.transactionIndex);
-            const callExecutionData = {
-                rlpHeader,
-                rlpEncodedTx,
-                rlpEncodedReceipt,
-                path,
-                rlpEncodedTxNodes,
-                rlpEncodedReceiptNodes
-            };
+            const callExecutionData = await createProofData(web3, requestResult);
             await expectRevert(rpcServer.executeCall(callExecutionData), "non-existent call request");
         });
 
@@ -162,24 +120,7 @@ contract('RPCServer', async (accounts) => {
             await mockRelay.setReceiptVerificationResult(1);
 
             // execute remote call
-            const block             = await web3.eth.getBlock(requestResult.receipt.blockHash);
-            const tx                = await web3.eth.getTransaction(requestResult.tx);
-            const txReceipt         = await web3.eth.getTransactionReceipt(requestResult.tx);
-            const rlpHeader         = createRLPHeader(block);
-            const rlpEncodedTx      = createRLPTransaction(tx);
-            const rlpEncodedReceipt = createRLPReceipt(txReceipt);
-
-            const path = RLP.encode(tx.transactionIndex);
-            const rlpEncodedTxNodes = await createTxMerkleProof(block, tx.transactionIndex);
-            const rlpEncodedReceiptNodes = await createReceiptMerkleProof(block, tx.transactionIndex);
-            const callExecutionData = {
-                rlpHeader,
-                rlpEncodedTx,
-                rlpEncodedReceipt,
-                path,
-                rlpEncodedTxNodes,
-                rlpEncodedReceiptNodes
-            };
+            const callExecutionData = await createProofData(web3, requestResult);
             await expectRevert(rpcServer.executeCall(callExecutionData), "non-existent call request");
         });
 
@@ -205,25 +146,7 @@ contract('RPCServer', async (accounts) => {
             const requestResult = await rpcProxy.requestCall(expectedCallId);
 
             // execute remote call
-            const block             = await web3.eth.getBlock(requestResult.receipt.blockHash);
-            const tx                = await web3.eth.getTransaction(requestResult.tx);
-            const txReceipt         = await web3.eth.getTransactionReceipt(requestResult.tx);
-            txReceipt.status        = false;    // set status to false to indicate a "failed" transaction
-            const rlpHeader         = createRLPHeader(block);
-            const rlpEncodedTx      = createRLPTransaction(tx);
-            const rlpEncodedReceipt = createRLPReceipt(txReceipt);
-
-            const path = RLP.encode(tx.transactionIndex);
-            const rlpEncodedTxNodes = await createTxMerkleProof(block, tx.transactionIndex);
-            const rlpEncodedReceiptNodes = await createReceiptMerkleProof(block, tx.transactionIndex);
-            const callExecutionData = {
-                rlpHeader,
-                rlpEncodedTx,
-                rlpEncodedReceipt,
-                path,
-                rlpEncodedTxNodes,
-                rlpEncodedReceiptNodes
-            };
+            const callExecutionData = await createProofData(web3, requestResult, false);
             await expectRevert(rpcServer.executeCall(callExecutionData), "failed call request");
         });
 
@@ -251,24 +174,7 @@ contract('RPCServer', async (accounts) => {
             const requestResult = await rpcProxy.requestCall(expectedCallId);
 
             // execute remote call
-            const block             = await web3.eth.getBlock(requestResult.receipt.blockHash);
-            const tx                = await web3.eth.getTransaction(requestResult.tx);
-            const txReceipt         = await web3.eth.getTransactionReceipt(requestResult.tx);
-            const rlpHeader         = createRLPHeader(block);
-            const rlpEncodedTx      = createRLPTransaction(tx);
-            const rlpEncodedReceipt = createRLPReceipt(txReceipt);
-
-            const path = RLP.encode(tx.transactionIndex);
-            const rlpEncodedTxNodes = await createTxMerkleProof(block, tx.transactionIndex);
-            const rlpEncodedReceiptNodes = await createReceiptMerkleProof(block, tx.transactionIndex);
-            const callExecutionData = {
-                rlpHeader,
-                rlpEncodedTx,
-                rlpEncodedReceipt,
-                path,
-                rlpEncodedTxNodes,
-                rlpEncodedReceiptNodes
-            };
+            const callExecutionData = await createProofData(web3, requestResult);
             const executionResult = await rpcServer.executeCall(callExecutionData);
             expectEvent.inLogs(executionResult.logs, 'CallExecuted',
                 { callId: expectedCallId,
@@ -295,24 +201,7 @@ contract('RPCServer', async (accounts) => {
             const requestResult = await rpcProxy.requestCall(expectedCallId);
 
             // execute remote call
-            const block             = await web3.eth.getBlock(requestResult.receipt.blockHash);
-            const tx                = await web3.eth.getTransaction(requestResult.tx);
-            const txReceipt         = await web3.eth.getTransactionReceipt(requestResult.tx);
-            const rlpHeader         = createRLPHeader(block);
-            const rlpEncodedTx      = createRLPTransaction(tx);
-            const rlpEncodedReceipt = createRLPReceipt(txReceipt);
-
-            const path = RLP.encode(tx.transactionIndex);
-            const rlpEncodedTxNodes = await createTxMerkleProof(block, tx.transactionIndex);
-            const rlpEncodedReceiptNodes = await createReceiptMerkleProof(block, tx.transactionIndex);
-            const callExecutionData = {
-                rlpHeader,
-                rlpEncodedTx,
-                rlpEncodedReceipt,
-                path,
-                rlpEncodedTxNodes,
-                rlpEncodedReceiptNodes
-            };
+            const callExecutionData = await createProofData(web3, requestResult);
             const executionResult = await rpcServer.executeCall(callExecutionData);
             // uint callId, address remoteRPCProxy, bool success, bytes data
             expectEvent.inLogs(executionResult.logs, 'CallExecuted',
@@ -348,24 +237,7 @@ contract('RPCServer', async (accounts) => {
             const requestResult = await rpcProxy.requestCall(expectedCallId);
 
             // execute remote call
-            const block             = await web3.eth.getBlock(requestResult.receipt.blockHash);
-            const tx                = await web3.eth.getTransaction(requestResult.tx);
-            const txReceipt         = await web3.eth.getTransactionReceipt(requestResult.tx);
-            const rlpHeader         = createRLPHeader(block);
-            const rlpEncodedTx      = createRLPTransaction(tx);
-            const rlpEncodedReceipt = createRLPReceipt(txReceipt);
-
-            const path = RLP.encode(tx.transactionIndex);
-            const rlpEncodedTxNodes = await createTxMerkleProof(block, tx.transactionIndex);
-            const rlpEncodedReceiptNodes = await createReceiptMerkleProof(block, tx.transactionIndex);
-            const callExecutionData = {
-                rlpHeader,
-                rlpEncodedTx,
-                rlpEncodedReceipt,
-                path,
-                rlpEncodedTxNodes,
-                rlpEncodedReceiptNodes
-            };
+            const callExecutionData = await createProofData(web3, requestResult);
             await expectRevert(rpcServer.executeCall(callExecutionData, {
                 gas: 1000000
             }), "not enough gas");
@@ -406,24 +278,7 @@ contract('RPCServer', async (accounts) => {
             const requestResult = await rpcProxy.requestCall(expectedCallId);
 
             // execute remote call
-            const block             = await web3.eth.getBlock(requestResult.receipt.blockHash);
-            const tx                = await web3.eth.getTransaction(requestResult.tx);
-            const txReceipt         = await web3.eth.getTransactionReceipt(requestResult.tx);
-            const rlpHeader         = createRLPHeader(block);
-            const rlpEncodedTx      = createRLPTransaction(tx);
-            const rlpEncodedReceipt = createRLPReceipt(txReceipt);
-
-            const path = RLP.encode(tx.transactionIndex);
-            const rlpEncodedTxNodes = await createTxMerkleProof(block, tx.transactionIndex);
-            const rlpEncodedReceiptNodes = await createReceiptMerkleProof(block, tx.transactionIndex);
-            const callExecutionData = {
-                rlpHeader,
-                rlpEncodedTx,
-                rlpEncodedReceipt,
-                path,
-                rlpEncodedTxNodes,
-                rlpEncodedReceiptNodes
-            };
+            const callExecutionData = await createProofData(web3, requestResult);
             const executionResult = await rpcServer.executeCall(callExecutionData, {
                 gas: 1500000
             });
@@ -440,32 +295,4 @@ contract('RPCServer', async (accounts) => {
         });
 
     });
-
-    const createTxMerkleProof = async (block, transactionIndex) => {
-        const trie = new Trie();
-
-        for (let i=0; i<block.transactions.length; i++) {
-            const tx = await web3.eth.getTransaction(block.transactions[i]);
-            const rlpTx = createRLPTransaction(tx);
-            const key = RLP.encode(i);
-            await trie.put(key, rlpTx);
-        }
-
-        const key = RLP.encode(transactionIndex);
-        return RLP.encode(await Trie.createProof(trie, key));
-    };
-
-    const createReceiptMerkleProof = async (block, transactionIndex) => {
-        const trie = new Trie();
-
-        for (let i=0; i<block.transactions.length; i++) {
-            const receipt = await web3.eth.getTransactionReceipt(block.transactions[i]);
-            const rlpReceipt = createRLPReceipt(receipt);
-            const key = RLP.encode(i);
-            await trie.put(key, rlpReceipt);
-        }
-
-        const key = RLP.encode(transactionIndex);
-        return RLP.encode(await Trie.createProof(trie, key));
-    }
 });
