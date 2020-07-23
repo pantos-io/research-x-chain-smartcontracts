@@ -12,12 +12,12 @@ contract('RPCProxy', async (accounts) => {
     let mockRelay;
 
     before(async () => {
-        mockRelay = await MockRelay.new({
-            from: accounts[0],
-        });
     });
 
     beforeEach(async () => {
+        mockRelay = await MockRelay.new({
+            from: accounts[0],
+        });
         rpcServer = await RPCServer.new({
             from: accounts[0],
         });
@@ -100,7 +100,6 @@ contract('RPCProxy', async (accounts) => {
             expectEvent.inLogs(ret.logs, 'CallRequested', {
                 callId: expectedCallId,
                 caller: accounts[0],
-                remoteRPCServer: rpcServer.address,
                 remoteContract: contractAddr,
                 callData: callData
             });

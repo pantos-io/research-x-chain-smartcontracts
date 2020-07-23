@@ -36,6 +36,8 @@ contract RPCServer is Ownable {
         bytes callData;
     }
 
+    mapping (bytes32 => bool) executedCalls;    // transaction hash => boolean
+
     uint256 constant public MIN_CALL_GAS = 1000000;
     uint256 constant public MIN_CALL_GAS_CHECK = 1015874;
 
@@ -58,10 +60,7 @@ contract RPCServer is Ownable {
         emit ProxyRemoved(proxyAddress);
     }
 
-    event CallEvent(address contractAddr, bytes callData);
     function executeCall(CallExecution calldata callExecution) external {
-//    function executeCall(bytes calldata rlpHeader, bytes calldata rlpEncodedTx, bytes calldata rlpEncodedReceipt,
-//        bytes calldata path, bytes calldata rlpEncodedTxNodes, bytes calldata rlpEncodedReceiptNodes) external {
         uint8 feeInWei = 0;
 
         Call memory call = extractCall(callExecution.rlpEncodedTx, callExecution.rlpEncodedReceipt);
@@ -88,8 +87,9 @@ contract RPCServer is Ownable {
         );
         require(verificationResult == 0, 'non-existent call request');
 
-        require (gasleft() >= MIN_CALL_GAS_CHECK, 'not enough gas');
-        emit CallEvent(call.contractAddress, call.callData);
+        require(gasleft() >= MIN_CALL_GAS_CHECK, 'not enough gas');
+        require(executedCalls[keccak256(callExecution.rlpEncodedTx)] == false, 'multiple call execution');
+        executedCalls[keccak256(callExecution.rlpEncodedTx)] = true;
         (bool success, bytes memory data) = call.contractAddress.call{gas: MIN_CALL_GAS}(call.callData);
         emit CallExecuted(call.callId, call.rpcProxy, success, data);
     }
