@@ -246,18 +246,9 @@ contract('RPCServer', async (accounts) => {
                     name: '_myString'
                 }]
             }, [expectedNumber, expectedString]);
-            // const callData = web3.eth.abi.encodeFunctionCall({
-            //     inputs: [],
-            //     name: "remoteMethod2",
-            //     outputs: [],
-            //     stateMutability: "nonpayable",
-            //     type: "function"
-            // }, []);
             const callback = 'callbackFunction';
 
             await remoteContract.remoteMethod(expectedNumber, expectedString);
-            console.log(await remoteContract.callData());
-            console.log(callData);
 
             // prepare and request remote call
             const expectedCallId = await rpcProxy.nextCallId();
@@ -285,12 +276,12 @@ contract('RPCServer', async (accounts) => {
             };
             const executionResult = await rpcServer.executeCall(callExecutionData);
             // uint callId, address remoteRPCProxy, bool success, bytes data
-            // expect(await remoteContract.myNumber()).to.be.bignumber.equal(expectedNumber);
+            expect(await remoteContract.myNumber()).to.be.bignumber.equal(expectedNumber);
             expectEvent.inLogs(executionResult.logs, 'CallExecuted',
                 { callId: expectedCallId,
                            remoteRPCProxy: rpcProxy.address,
-                           success: true/*,
-                           data: []*/
+                           success: true,
+                           data: null
                          }
             );
         });

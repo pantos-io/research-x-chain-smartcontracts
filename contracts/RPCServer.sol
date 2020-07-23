@@ -87,19 +87,10 @@ contract RPCServer is Ownable {
             callExecution.rlpEncodedReceiptNodes
         );
         require(verificationResult == 0, 'non-existent call request');
-//TODO:
-// RPCServer.sol:35:60: CompilerError: Stack too deep, try removing local variables.
-//     uint8 verified = relay.verifyTransaction(feeInWei, rlpHeader, reqConfirmations, rlpEncodedTx, path, rlpEncodedNodes);
-//                                                        ^-------^
-// Creating RelayMeta instead of separate relayAddress and reqConfirmations solves this.
-
-//        (address intendedRPCServer, address contractAddr, bytes memory callData, uint callId) = extractCall(rlpEncodedTx);
-//        require(intendedRPCServer == address(this));
 
 //        require (gasleft() >= MIN_CALL_GAS_CHECK);
         emit CallEvent(call.contractAddress, call.callData);
-//        (bool success, bytes memory data) = call.contractAddress.call{gas: MIN_CALL_GAS}(call.callData);
-        (bool success, bytes memory data) = call.contractAddress.call(call.callData);
+        (bool success, bytes memory data) = call.contractAddress.call{gas: MIN_CALL_GAS}(call.callData);
         emit CallExecuted(call.callId, call.rpcProxy, success, data);
     }
 
@@ -123,8 +114,28 @@ contract RPCServer is Ownable {
         call.callId = eventTopics[1].toUint();  // indices of indexed fields start at 1 (0 is reserved for the hash of the event signature)
         call.caller = address(eventTopics[2].toUint());
         call.contractAddress = address(eventTopics[3].toUint());
-        call.callData = eventTuple[2].toRlpBytes();
+        bytes memory callData = eventTuple[2].toBytes();
 
+        uint callDataLen;
+        assembly {
+            callDataLen := mload(add(callData, 64))  // length in bytes
+            callData := add(callData, 96)  // skip first 2 32-byte buckets as these contain no payload
+        }
+        bytes memory parsedCallData = new bytes(callDataLen);
+        assembly {
+            mstore(parsedCallData, callDataLen)
+            let i := 1  // next bucket position in parsedCallData
+            for
+                { let end := add(callData, callDataLen) }
+                lt(callData, end)
+                { callData := add(callData, 32) }
+            {
+                mstore(add(parsedCallData, mul(i, 32)), mload(callData))
+                i := add(i, 1)
+            }
+        }
+
+        call.callData = parsedCallData;
         return call;
     }
 
