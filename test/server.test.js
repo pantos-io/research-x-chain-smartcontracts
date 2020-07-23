@@ -29,7 +29,7 @@ contract('RPCServer', async (accounts) => {
         });
         remoteContract = await MockContract.new({
             from: accounts[0],
-        })
+        });
         rpcServer = await RPCServer.new({
             from: accounts[0],
         });
