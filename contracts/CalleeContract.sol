@@ -1,6 +1,6 @@
 pragma solidity >=0.6.0 <0.7.0;
 
-contract MockContract {
+contract CalleeContract {
 
     uint public myNumber;
     string public myString;
@@ -13,4 +13,5 @@ contract MockContract {
         myNumber = _myNumber;
         myString = _myString;
     }
+
 }

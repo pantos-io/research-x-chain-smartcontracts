@@ -28,6 +28,11 @@ contract RPCProxy {
 
     struct Result {
         address rpcServer;
+        bool status;
+        uint callId;
+        address rpcProxy;
+        bool success;
+        bytes returnData;
     }
 
     uint8 constant public reqConfirmations = 5;
@@ -37,6 +42,7 @@ contract RPCProxy {
 
     uint256 public nextCallId = 1;
     mapping(uint => Call) private pendingCalls;
+    mapping(bytes32 => bool) private acknowledgedCalls;
     address private rpcServer;
     Relay relay;
 
@@ -80,6 +86,7 @@ contract RPCProxy {
 
         Result memory result = extractResult(callAck.rlpEncodedTx, callAck.rlpEncodedReceipt);
         require(result.rpcServer == rpcServer, 'illegal rpc server');
+        require(result.status == true, 'failed call execution');
 
         uint8 feeInWei = 0; // todo: pass in constructor? Should ideally be dynamic
         uint8 requiredConfirmations = 0; // todo: should be passed in constructor --> potentially different for each relay
@@ -102,18 +109,18 @@ contract RPCProxy {
         );
         require(verificationResult == 0, 'non-existent call execution');
 
-//        require(relay.verifyTransaction(feeInWei, rlpHeader, reqConfirmations, rlpEncodedTx, path, rlpEncodedNodes) == 0);
-//        (uint callId, address txRemoteRPCServer, bytes memory result, uint error) = parseTx(rlpEncodedTx);
-//        require(remoteRPCServer == txRemoteRPCServer);
-//        require(pendingCalls[callId].caller != address(0));  // make sure pending call is not acknowledged yet
-//
-//        string memory callbackSig = string(abi.encodePacked(pendingCalls[callId].callback, "(uint, bytes, uint)"));
-//
-//        require (gasleft() >= MIN_CALL_GAS_CHECK);
-//        (bool success,) = pendingCalls[callId].caller.call{gas: MIN_CALL_GAS}(abi.encodeWithSignature(callbackSig, pendingCalls[callId].dappSpecificId, result, error));
-//        delete pendingCalls[callId];
-//
-//        emit CallAcknowledged(callId, success);
+        require(result.rpcProxy == address(this), "incorrect rpc proxy");
+        require(gasleft() >= MIN_CALL_GAS_CHECK, 'not enough gas');
+
+        // make sure pending call is not acknowledged yet
+        require(acknowledgedCalls[keccak256(callAck.rlpEncodedTx)] == false, 'multiple call acknowledgement');
+        acknowledgedCalls[keccak256(callAck.rlpEncodedTx)] = true;
+
+        string memory callbackSig = string(abi.encodePacked(pendingCalls[result.callId].callback, "(uint256,bytes,bool)"));
+        (bool success,) = pendingCalls[result.callId].caller.call{gas: MIN_CALL_GAS}(abi.encodeWithSignature(callbackSig, pendingCalls[result.callId].dappSpecificId, result.returnData, result.success));
+
+        delete pendingCalls[result.callId];
+        emit CallAcknowledged(result.callId, success);
     }
 
     function getPendingCall(uint callId) public view returns (Call memory) {
@@ -126,6 +133,49 @@ contract RPCProxy {
         // parse transaction
         RLPReader.RLPItem[] memory transaction = rlpTransaction.toRlpItem().toList();
         result.rpcServer = transaction[3].toAddress();
+
+        // parse receipt
+        RLPReader.RLPItem[] memory receipt = rlpReceipt.toRlpItem().toList();
+        result.status = receipt[0].toBoolean();
+
+        // read logs
+        RLPReader.RLPItem[] memory logs = receipt[3].toList();
+        RLPReader.RLPItem[] memory eventTuple = logs[logs.length - 1].toList();   // read last emitted event (CallExecuted)
+        RLPReader.RLPItem[] memory eventTopics = eventTuple[1].toList();  // topics contain all indexed event fields
+
+        // read parameters from event
+        result.callId = eventTopics[1].toUint();  // indices of indexed fields start at 1 (0 is reserved for the hash of the event signature)
+        result.rpcProxy = address(eventTopics[2].toUint());
+        uint succ = eventTopics[3].toUint();
+        if (succ == 0) {
+            result.success = false;
+        }
+        else {
+            result.success = true;
+        }
+        bytes memory returnData = eventTuple[2].toBytes();
+
+        uint returnDataLen;
+        assembly {
+            returnDataLen := mload(add(returnData, 64))  // length in bytes
+            returnData := add(returnData, 96)  // skip first 2 32-byte buckets as these contain no payload
+        }
+        bytes memory parsedReturnData = new bytes(returnDataLen);
+        assembly {
+            mstore(parsedReturnData, returnDataLen)
+            let i := 1  // next bucket position in parsedCallData
+            for
+            { let end := add(returnData, returnDataLen) }
+            lt(returnData, end)
+            { returnData := add(returnData, 32) }
+            {
+                mstore(add(parsedReturnData, mul(i, 32)), mload(returnData))
+                i := add(i, 1)
+            }
+        }
+
+        result.returnData = parsedReturnData;
+
         return result;
     }
 

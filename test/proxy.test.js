@@ -5,11 +5,12 @@ const {createProofData} = require('../utils');
 const RPCProxy = artifacts.require('./RPCProxy');
 const RPCServer = artifacts.require('./RPCServer');
 const MockRelay = artifacts.require('./MockRelay');
-const MockContract = artifacts.require('./MockContract');
+const CalleeContract = artifacts.require('./CalleeContract');
+const CallerContract = artifacts.require('./CallerContract');
 
 contract('RPCProxy', async (accounts) => {
 
-    let rpcProxy, rpcServer, illegalRpcProxy, illegalRpcServer,  mockRelay, remoteContract;
+    let rpcProxy, rpcServer, illegalRpcProxy, illegalRpcServer,  mockRelay, calleeContract, callerContract, otherRpcProxy;
 
     before(async () => {
     });
@@ -18,7 +19,7 @@ contract('RPCProxy', async (accounts) => {
         mockRelay = await MockRelay.new({
             from: accounts[0],
         });
-        remoteContract = await MockContract.new({
+        calleeContract = await CalleeContract.new({
             from: accounts[0],
         });
         rpcServer = await RPCServer.new({
@@ -35,6 +36,13 @@ contract('RPCProxy', async (accounts) => {
             from: accounts[0],
         });
         await illegalRpcServer.addProxy(illegalRpcProxy.address, mockRelay.address, 0);
+        callerContract = await CallerContract.new(rpcProxy.address, calleeContract.address, {
+            from: accounts[0],
+        });
+        otherRpcProxy = await RPCProxy.new(rpcServer.address, mockRelay.address, {
+            from: accounts[0],
+        });
+        await rpcServer.addProxy(otherRpcProxy.address, mockRelay.address, 0);
     });
 
 
@@ -146,7 +154,7 @@ contract('RPCProxy', async (accounts) => {
     describe('Function: acknowledgeCall', function () {
 
         it("should throw error 'illegal rpc server' when acknowledging call from illegal rpc server", async () => {
-            const contractAddr = remoteContract.address;
+            const contractAddr = calleeContract.address;
             const dappSpecificId = '1';
             const callData = web3.eth.abi.encodeFunctionCall({
                 name: 'myMethod',
@@ -182,7 +190,7 @@ contract('RPCProxy', async (accounts) => {
         });
 
         it("should throw error 'non-existent call execution' when acknowledging call that was never executed", async () => {
-            const contractAddr = remoteContract.address;
+            const contractAddr = calleeContract.address;
             const dappSpecificId = '1';
             const callData = web3.eth.abi.encodeFunctionCall({
                 name: 'myMethod',
@@ -223,6 +231,179 @@ contract('RPCProxy', async (accounts) => {
             await expectRevert(rpcProxy.acknowledgeCall(callAcknowledgeData, {
                 gas: 1500000
             }), 'non-existent call execution');
+        });
+
+        it("should throw error 'failed call execution' when acknowledging call that failed", async () => {
+            const contractAddr = calleeContract.address;
+            const dappSpecificId = '1';
+            const callData = web3.eth.abi.encodeFunctionCall({
+                name: 'myMethod',
+                type: 'function',
+                inputs: [{
+                    type: 'uint256',
+                    name: 'myNumber'
+                },{
+                    type: 'string',
+                    name: 'myString'
+                }]
+            }, ['2345675643', 'Hello!%']);
+            const callback = 'callbackFunction';
+
+            // prepare call on proxy
+            const callId = await rpcProxy.nextCallId();
+            await rpcProxy.callContract(contractAddr, dappSpecificId, callData, callback);
+
+            // request call on proxy
+            const requestResult = await rpcProxy.requestCall(callId);
+
+            // execute call on server
+            const callExecutionData = await createProofData(web3, requestResult);
+            const executionResult = await rpcServer.executeCall(callExecutionData, {
+                gas: 1500000
+            });
+
+            // acknowledge call on legal proxy
+            let callAcknowledgeData = await createProofData(web3, executionResult, false);
+            await expectRevert(rpcProxy.acknowledgeCall(callAcknowledgeData, {
+                gas: 1500000
+            }), 'failed call execution');
+        });
+
+        it("should successfully process acknowledgement", async () => {
+            const contractAddr = calleeContract.address;
+
+            // prepare call on proxy
+            const callId = await rpcProxy.nextCallId();
+            const expectedDappId = 1;
+            await callerContract.callRemoteMethod(5, "test", expectedDappId);
+
+            // request call on proxy
+            const requestResult = await rpcProxy.requestCall(callId);
+
+            // execute call on server
+            const callExecutionData = await createProofData(web3, requestResult);
+            const executionResult = await rpcServer.executeCall(callExecutionData, {
+                gas: 1500000
+            });
+
+            // acknowledge call on legal proxy
+            let callAcknowledgeData = await createProofData(web3, executionResult);
+            const result = await rpcProxy.acknowledgeCall(callAcknowledgeData, {
+                gas: 1500000
+            });
+            expectEvent.inLogs(result.logs, 'CallAcknowledged',
+                { callId: callId,
+                    success: true
+                }
+            );
+            expect(await callerContract.dappSpecificId()).to.be.bignumber.equal(web3.utils.toBN(expectedDappId));
+        });
+
+        it("should successfully process acknowledgement even if callback fails", async () => {
+            const contractAddr = calleeContract.address;
+
+            // prepare call on proxy
+            const callId = await rpcProxy.nextCallId();
+            const expectedDappId = 1;
+            await callerContract.callRemoteMethodFailedCallback(5, "test", expectedDappId);
+
+            // request call on proxy
+            const requestResult = await rpcProxy.requestCall(callId);
+
+            // execute call on server
+            const callExecutionData = await createProofData(web3, requestResult);
+            const executionResult = await rpcServer.executeCall(callExecutionData, {
+                gas: 1500000
+            });
+
+            // acknowledge call on legal proxy
+            let callAcknowledgeData = await createProofData(web3, executionResult);
+            const result = await rpcProxy.acknowledgeCall(callAcknowledgeData, {
+                gas: 1500000
+            });
+            expectEvent.inLogs(result.logs, 'CallAcknowledged',
+                { callId: callId,
+                    success: false
+                }
+            );
+            expect(await callerContract.dappSpecificId()).to.be.bignumber.equal(web3.utils.toBN(0));
+        });
+
+        it("should throw error 'not enough gas' when acknowledging a call without enough gas", async () => {
+            const contractAddr = calleeContract.address;
+
+            // prepare call on proxy
+            const callId = await rpcProxy.nextCallId();
+            const expectedDappId = 1;
+            await callerContract.callRemoteMethod(5, "test", expectedDappId);
+
+            // request call on proxy
+            const requestResult = await rpcProxy.requestCall(callId);
+
+            // execute call on server
+            const callExecutionData = await createProofData(web3, requestResult);
+            const executionResult = await rpcServer.executeCall(callExecutionData, {
+                gas: 1500000
+            });
+
+            // acknowledge call on legal proxy
+            let callAcknowledgeData = await createProofData(web3, executionResult);
+            await expectRevert(rpcProxy.acknowledgeCall(callAcknowledgeData, {
+                gas: 1000000
+            }), 'not enough gas');
+
+            expect(await callerContract.dappSpecificId()).to.be.bignumber.equal(web3.utils.toBN(0));
+        });
+
+        it("should throw error 'multiple call acknowledgement' when acknowledging a call multiple times", async () => {
+            const contractAddr = calleeContract.address;
+
+            // prepare call on proxy
+            const callId = await rpcProxy.nextCallId();
+            const expectedDappId = 1;
+            await callerContract.callRemoteMethod(5, "test", expectedDappId);
+
+            // request call on proxy
+            const requestResult = await rpcProxy.requestCall(callId);
+
+            // execute call on server
+            const callExecutionData = await createProofData(web3, requestResult);
+            const executionResult = await rpcServer.executeCall(callExecutionData, {
+                gas: 1500000
+            });
+
+            // acknowledge call on legal proxy
+            let callAcknowledgeData = await createProofData(web3, executionResult);
+            await rpcProxy.acknowledgeCall(callAcknowledgeData, {
+                gas: 1500000
+            });
+            await expectRevert(rpcProxy.acknowledgeCall(callAcknowledgeData, {
+                gas: 1500000
+            }), 'multiple call acknowledgement');
+        });
+
+        it("should throw error 'incorrect rpc proxy' when acknowledging a call on an incorrect proxy", async () => {
+            const contractAddr = calleeContract.address;
+
+            // prepare call on proxy
+            const callId = await rpcProxy.nextCallId();
+            const expectedDappId = 1;
+            await callerContract.callRemoteMethod(5, "test", expectedDappId);
+
+            // request call on proxy
+            const requestResult = await rpcProxy.requestCall(callId);
+
+            // execute call on server
+            const callExecutionData = await createProofData(web3, requestResult);
+            const executionResult = await rpcServer.executeCall(callExecutionData, {
+                gas: 1500000
+            });
+
+            // acknowledge call on legal proxy
+            let callAcknowledgeData = await createProofData(web3, executionResult);
+            await expectRevert(otherRpcProxy.acknowledgeCall(callAcknowledgeData, {
+                gas: 1500000
+            }), 'incorrect rpc proxy');
         });
     });
 

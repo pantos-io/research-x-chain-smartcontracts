@@ -42,7 +42,7 @@ contract RPCServer is Ownable {
     uint256 constant public MIN_CALL_GAS_CHECK = 1015874;
 
 
-    event CallExecuted(uint callId, address remoteRPCProxy, bool success, bytes data);
+    event CallExecuted(uint indexed callId, address indexed remoteRPCProxy, bool indexed success, bytes data);
     event ProxyAdded(address indexed proxyAddress, address relayAddress, uint8 requiredConfirmations);
     event ProxyRemoved(address indexed proxyAddress);
 
