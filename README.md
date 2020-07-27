@@ -21,12 +21,12 @@ Imagine you have the following two contracts as in the picture above.
 contract ContractOnA {
     ...
 
-    function callRemoteFunction(address _param1, uint _param2) public {
-        bytes memory callData = abi.encodeWithSignature("remoteFunction(address,uint256)", _param1, _param2);
+    function callRemoteFunction(address param1, uint param2) public {
+        bytes memory callData = abi.encodeWithSignature("remoteFunction(address,uint256)", param1, param2);
         blockchainB.callContract(contractOnB, callIdentifier, callData, "callback");
     }
 
-    function callback(uint _dappSpecificId, bytes memory _result, bool _success) public {
+    function callback(uint callIdentifier, bytes memory result, bool success) public {
         ...
     }
 }
@@ -36,7 +36,7 @@ contract ContractOnA {
 contract ContractOnB {
     ...
 
-    function remoteFunction(address _param1, uint _param2) public returns (uint) {
+    function remoteFunction(address param1, uint param2) public returns (uint) {
         ...
     }
 }
@@ -89,7 +89,7 @@ of `ContractOnB` on blockchain B.
 
 ```solidity
 RPCProxy blockchainB;
-bytes memory callData = abi.encodeWithSignature("remoteFunction(address,uint256)", _param1, _param2);
+bytes memory callData = abi.encodeWithSignature("remoteFunction(address,uint256)", param1, param2);
 blockchainB.callContract(contractOnB, callIdentifier, callData, "callback");
 ```
 
