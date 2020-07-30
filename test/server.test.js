@@ -4,7 +4,7 @@ const {expectRevert, expectEvent} = require('@openzeppelin/test-helpers');
 const RPCProxy = artifacts.require('./RPCProxy');
 const RPCServer = artifacts.require('./RPCServer');
 const MockRelay = artifacts.require('./MockRelay');
-const MockContract = artifacts.require('./MockContract');
+const CalleeContract = artifacts.require('./CalleeContract');
 
 contract('RPCServer', async (accounts) => {
 
@@ -19,7 +19,7 @@ contract('RPCServer', async (accounts) => {
         mockRelay = await MockRelay.new({
             from: accounts[0],
         });
-        remoteContract = await MockContract.new({
+        remoteContract = await CalleeContract.new({
             from: accounts[0],
         });
         rpcServer = await RPCServer.new({
