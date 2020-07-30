@@ -175,7 +175,7 @@ When the off-chain clients receive the "CallAcknowledged" event,
 they know that the remote contract call has been completed.
 
 ###
-A more detailed explanation can be found [here](https://dsg.tuwien.ac.at/projects/tast/pub/TODO).
+A more detailed explanation can be found [here](https://dsg.tuwien.ac.at/projects/tast/pub/tast-white-paper-10.pdf).
 
 
 ## Installation
@@ -196,7 +196,7 @@ Then execute the following steps:
 
 ## How to contribute
 Testimonium is a research prototype. We welcome anyone to contribute.
-File a bug report or submit feature requests through the [issue tracker](https://github.com/pantos-io/TODO/issues). 
+File a bug report or submit feature requests through the [issue tracker](https://github.com/pantos-io/x-chain-smartcontracts/issues). 
 Feel free to submit a pull request.
 
 ## Acknowledgements
